@@ -1,6 +1,15 @@
-import { TouchableOpacity, Text, View, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import {
+  TouchableOpacity,
+  Text,
+  View,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
 import baseStyles from "../styles";
 import { useEffect, useState } from "react";
+// import { DownOutlined } from "@ant-design/icons";
+// import AntDesign from "@expo/vector-icons/AntDesign";
 import PieChart from "react-native-pie-chart";
 import { LineInfoProps, Votes } from "../types";
 import {
@@ -14,11 +23,14 @@ import {
   setIndexConfiguration,
   Timestamp,
   where,
+  setLogLevel,
+  initializeFirestore,
 } from "firebase/firestore";
 import { initializeApp } from "firebase/app";
 import moment from "moment";
 import Slider from "@react-native-community/slider";
 import AntDesign from "@expo/vector-icons/AntDesign";
+import DropDown from "./Dropdown";
 
 const styles = StyleSheet.create({
   ScrollViewItem: {
@@ -30,22 +42,26 @@ const styles = StyleSheet.create({
   },
   dataContainer: {
     margin: 3,
-    maxWidth: "33%",
+    // maxWidth: "33%",
     // backgroundColor: "red",
     alignContent: "center",
-// borderColor:baseStyles.colors.russianViolet,
-// borderWidth: 1,
+    // borderColor:baseStyles.colors.russianViolet,
+    // borderWidth: 1,
 
-padding:1
+    padding: 1,
     // justifyContent:"center"
   },
 });
 
 const firebaseConfig = {
-
+  apiKey: process.env.EXPO_PUBLIC_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_MEASUREMENT_ID,
 };
-// useEffect(()=>{getData(line)}, [data])
-// Initialize Firebase
 
 export default function LineInfo({ line /* other props */ }: LineInfoProps) {
   const [visible, setVisible] = useState(false);
@@ -59,9 +75,16 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
   const [disabled, setDisabled] = useState<boolean>(false);
   const [occupancy, setOccupancy] = useState<Number>(-1);
 
-  // Move Firebase initialization outside component (see note below)
-  const firestore = getFirestore(initializeApp(firebaseConfig));
+  const [delay_open, setDelayOpen] = useState<boolean>(false);
+  const [inspection_open, setInspectionOpen] = useState<boolean>(false);
+  const [occupancy_open, setOccupancyOpen] = useState<boolean>(false);
 
+  // Move Firebase initialization outside component (see note below)
+  const app = initializeApp(firebaseConfig);
+  const firestore = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+  });
+  console.log("firebaseConfig", firestore.app.options);
   const getData = async (line: string) => {
     try {
       setLoading(true);
@@ -72,13 +95,13 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
         where("timestamp", ">=", twoHourAgo),
         limit(100)
       );
-      console.log(twoHourAgo);
+      console.log();
 
       const snapshot = await getDocs(q);
       const votes = snapshot.docs.map((doc) => doc.data() as Votes);
       setData(votes);
     } catch (error) {
-      console.error("Fetch error:", error);
+      console.error("Fetch error:", typeof error);
     } finally {
       setLoading(false);
     }
@@ -89,11 +112,15 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
     return data.reduce((sum, v) => sum + v.occupancy, 0) / data.length;
   };
   const calculateDelay = () => {
-    return {yaysayers:data.filter(vote => vote.isDelayed).length, naysayers:data.length};
+    const yaydata = data.filter((vote) => vote.isDelayed).length 
+    return {
+      yaysayers: yaydata,
+      naysayers: data.length-yaydata,
+    };
   };
   const calculateInspections = () => {
-    const yayVotes = { value: 0, color: baseStyles.colors.russianViolet };
-    const nayVotes = { value: 0, color: baseStyles.colors.silver2 };
+    const yayVotes = { value: 0, color: baseStyles.colors.lapisLazuli };
+    const nayVotes = { value: 0, color: baseStyles.colors.silver };
     data.forEach((vote) => {
       // console.log(vote.isInspected, line)
       if (vote.isInspected) {
@@ -125,25 +152,57 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
     return inspection_data.isValid ? (
       <Text>{inspection_data.text}</Text>
     ) : (
-      <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+      <View>
         <View style={styles.dataContainer}>
-          <Text>{delay_data.yaysayers}/{delay_data.naysayers} szavazó szerint késik a járat </Text>
-        </View>
-        <View style={styles.dataContainer}>
-          
-          <PieChart
-            widthAndHeight={100}
-            series={inspection_data.series}
-            cover={0.50}
+          <DropDown
+            isOpen={delay_open}
+            setIsOpen={(open: boolean) => {
+              setDelayOpen(open);
+            }}
+            title="Késés"
+            chartData={[
+              { value: delay_data.naysayers, color: baseStyles.colors.silver },
+              {
+                value: delay_data.yaysayers,
+                color: baseStyles.colors.lapisLazuli,
+              },
+            ]}
+            chartWidth={100}
+            description={`legutóbbi 2 órában \nIgennel: ${delay_data.yaysayers} | Nemmel: ${delay_data.naysayers}`}
           />
-          <Text style={{textAlign:"center", margin:5}}>
-            {inspection_data.votecount.yayvotes} jelentett ellenőrt
-          </Text>
         </View>
         <View style={styles.dataContainer}>
-          <Text style={{textAlign:"right"}}>zsúfoltság:</Text>
-          <Text style={[baseStyles.baseStyles.darkSlateGrayH1, {textAlign:"right"}]}>{calculateOccupancy()}/10</Text>
-          
+          <DropDown
+            isOpen={inspection_open}
+            setIsOpen={(open: boolean) => {
+              setInspectionOpen(open);
+            }}
+            title="Ellenőrzés"
+            chartData={inspection_data.series}
+            chartWidth={100}
+            description={`legutóbbi 2 órában \n${inspection_data.votecount.yayvotes} / ${inspection_data.votecount.allvotes}`}
+          />
+        </View>
+        <View style={styles.dataContainer}>
+          <DropDown
+            isOpen={occupancy_open}
+            setIsOpen={(open: boolean) => {
+              setOccupancyOpen(open);
+            }}
+            title="Foglalt helyek"
+            chartData={[
+              {
+                value: calculateOccupancy(),
+                color: baseStyles.colors.russianViolet,
+              },
+              {
+                value: 10 - calculateOccupancy(),
+                color: baseStyles.colors.silver,
+              },
+            ]}
+            chartWidth={100}
+            description={`legutóbbi 2 órában \n${calculateOccupancy()}`}
+          />
         </View>
       </View>
     );
@@ -182,7 +241,7 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
               onPress={() => {
                 setVoting(!isVoting);
                 setDisabled(!disabled);
-                console.log(disabled)
+                console.log(disabled);
               }}
             >
               <AntDesign
@@ -199,7 +258,12 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
               justifyContent: "space-between",
             }}
           >
-            <TouchableOpacity onPress={() => {setInspectionSelected(true);setInspectionPassed(true)}}>
+            <TouchableOpacity
+              onPress={() => {
+                setInspectionSelected(true);
+                setInspectionPassed(true);
+              }}
+            >
               <View
                 style={[
                   { margin: 5, borderRadius: 10, padding: 10 },
@@ -211,7 +275,12 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
                 <Text style={baseStyles.baseStyles.silverText}>Igen</Text>
               </View>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => {setInspectionSelected(false); setInspectionPassed(true)}}>
+            <TouchableOpacity
+              onPress={() => {
+                setInspectionSelected(false);
+                setInspectionPassed(true);
+              }}
+            >
               <View
                 style={[
                   { margin: 5, borderRadius: 10, padding: 10 },
@@ -240,7 +309,12 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
                 justifyContent: "space-between",
               }}
             >
-              <TouchableOpacity onPress={() => {setDelaySelected(true); setDelayPassed(true)}}>
+              <TouchableOpacity
+                onPress={() => {
+                  setDelaySelected(true);
+                  setDelayPassed(true);
+                }}
+              >
                 <View
                   style={[
                     { margin: 5, borderRadius: 10, padding: 10 },
@@ -252,7 +326,12 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
                   <Text style={baseStyles.baseStyles.silverText}>Igen</Text>
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => {setDelaySelected(false); setDelayPassed(true)}}>
+              <TouchableOpacity
+                onPress={() => {
+                  setDelaySelected(false);
+                  setDelayPassed(true);
+                }}
+              >
                 <View
                   style={[
                     { margin: 5, borderRadius: 10, padding: 10 },
@@ -278,7 +357,9 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
                 thumbTintColor={baseStyles.colors.russianViolet}
                 renderStepNumber={true}
                 style={{ marginBottom: 20 }}
-                onValueChange={(val)=>{setOccupancy(val)}}
+                onValueChange={(val) => {
+                  setOccupancy(val);
+                }}
               ></Slider>
             </View>
           </View>
@@ -311,7 +392,7 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
     );
   };
   const submitVote = async () => {
-    if(delayPassed && inspectionPassed && occupancy != -1){
+    if (delayPassed && inspectionPassed && occupancy != -1) {
       const votesCollection = collection(firestore, "votes");
       await setDoc(doc(votesCollection), {
         line: line,
@@ -320,10 +401,12 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
         occupancy: occupancy,
         timestamp: Timestamp.fromDate(new Date(Date.now())),
       });
-      getData(line)
-      setDisabled(!disabled)
-    }else{
-      Alert.alert("Na, mit kezdjek egy üres tippel!?", "Töltsd ki rendesen!", [{text:"Értettem!"}])
+      getData(line);
+      setDisabled(!disabled);
+    } else {
+      Alert.alert("Na, mit kezdjek egy üres tippel!?", "Töltsd ki rendesen!", [
+        { text: "Értettem!" },
+      ]);
     }
   };
   return (
@@ -338,33 +421,37 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
 
         {/* {loading && <Text>Loading...</Text>} */}
         {loading && (
-  <View style={{
-    flex: 1,
-    width:"100%",
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: baseStyles.colors.silver, // Use your color system
-    padding: 20,
-    borderRadius: 10,
-    marginVertical: 10
-  }}>
-    <ActivityIndicator 
-      size="large" 
-      color={baseStyles.colors.russianViolet} 
-      style={{ marginBottom: 10 }}
-    />
-    <Text style={[
-      baseStyles.baseStyles.darkSlateGrayH3,
-      { 
-        textAlign: 'center',
-        fontStyle: 'italic',
-        opacity: 0.8
-      }
-    ]}>
-      Adatok betöltése...
-    </Text>
-  </View>
-)}
+          <View
+            style={{
+              flex: 1,
+              width: "100%",
+              justifyContent: "center",
+              alignItems: "center",
+              backgroundColor: baseStyles.colors.silver, // Use your color system
+              padding: 20,
+              borderRadius: 10,
+              marginVertical: 10,
+            }}
+          >
+            <ActivityIndicator
+              size="large"
+              color={baseStyles.colors.russianViolet}
+              style={{ marginBottom: 10 }}
+            />
+            <Text
+              style={[
+                baseStyles.baseStyles.darkSlateGrayH3,
+                {
+                  textAlign: "center",
+                  fontStyle: "italic",
+                  opacity: 0.8,
+                },
+              ]}
+            >
+              Adatok betöltése...
+            </Text>
+          </View>
+        )}
         {visible && !loading && (
           <View
             style={[
@@ -374,7 +461,7 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
                 borderRadius: 10,
                 width: "100%",
                 padding: 3,
-                margin:6
+                margin: 6,
               },
             ]}
           >
@@ -384,7 +471,7 @@ export default function LineInfo({ line /* other props */ }: LineInfoProps) {
               <TouchableOpacity
                 onPress={() => {
                   setVoting(!isVoting);
-                  setDisabled(!disabled)
+                  setDisabled(!disabled);
                 }}
               >
                 <View

@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 export {VehicleListProps, DropdownItemProps, DropdownProps, LineInfoProps, Votes}
 import { Timestamp } from "firebase/firestore";
+import { Slice } from "react-native-pie-chart";
 interface VehicleListProps {
   title: string;
   list: Array<string>;
@@ -8,12 +9,12 @@ interface VehicleListProps {
   // onPress: (props:databaseProps) => void;
 }
 interface DropdownProps {
-    children: ReactNode;
-    title: string;
-    open?: boolean;
-    onClose?: () => void;
-    onOpen?: () => void;
-    icon?: string;
+  isOpen: boolean,
+  setIsOpen: (isOpen: boolean) => void,
+  title: string,
+  chartData:Slice[],
+  chartWidth:number,
+  description:string
   }
 
   
