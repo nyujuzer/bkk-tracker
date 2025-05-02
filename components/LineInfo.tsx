@@ -42,13 +42,7 @@ padding:1
 });
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBu3PYtAKk6CAOWfjk0oz_02FwjEJPct9M",
-  authDomain: "blicc-8d13f.firebaseapp.com",
-  projectId: "blicc-8d13f",
-  storageBucket: "blicc-8d13f.firebasestorage.app",
-  messagingSenderId: "760308162744",
-  appId: "1:760308162744:web:d68ccf950f5dff281a144d",
-  measurementId: "G-R7QN5R9X8Y",
+
 };
 // useEffect(()=>{getData(line)}, [data])
 // Initialize Firebase
